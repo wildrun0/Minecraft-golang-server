@@ -64,6 +64,17 @@ func NameToUUID(name string) uuid.UUID {
 //Store all connections
 var players_conns []net.Conn
 
+// cringe department
+func remove_conn(r net.Conn) []string {
+	var temp []string
+	for i, v := range players_conns {
+		if v == r {
+			players_conns[i] = players_conns[len(players_conns)-1]
+			players_conns = players_conns[:len(players_conns)-1]
+		}
+	}
+	return temp // i dont care what this function will return, im not gonna use it anywats
+}
 func acceptConn(conn net.Conn) {
 	defer conn.Close()
 	// handshake
@@ -96,7 +107,7 @@ var difficulties = [4]string{"Мирная", "Легкая", "Нормальна
 
 func handlePlaying(conn net.Conn, protocol int32) {
 	c := cron.New()
-	c.AddFunc("@every 25s", func() {
+	_, _ = c.AddFunc("@every 25s", func() {
 		if err := conn.WritePacket(pk.Marshal(0x21, pk.Long(rand.Uint64()))); err != nil {
 			log.Print("Error when sending KEEP ALIVE PACKET", err)
 		}
@@ -139,6 +150,7 @@ func handlePlaying(conn net.Conn, protocol int32) {
 			send_public_chat(info.Name+" has left the server", 1, "yellow")
 			log.Printf("ReadPacket error: %v", err)
 			c.Stop()
+			remove_conn(conn)
 			break
 		} else {
 			switch p.ID {

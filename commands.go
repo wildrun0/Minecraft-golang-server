@@ -18,13 +18,17 @@ func send_error(conn net.Conn, erro string) {
 }
 
 func disconnect(conn net.Conn, reason string) {
-	conn.WritePacket(pk.Marshal(0x1B, chat.Text(reason)))
+	if err := conn.WritePacket(pk.Marshal(0x1B, chat.Text(reason))); err != nil {
+		log.Print(err)
+	}
 }
 func difficulty(conn net.Conn, diff_type int) {
 	if diff_type < 0 || diff_type > 3 {
 		send_error(conn, "Wrong command! Use /difficulty [1-3]")
 	} else {
-		conn.WritePacket(pk.Marshal(0x0E, pk.Byte(diff_type), pk.Boolean(true)))
+		if err := conn.WritePacket(pk.Marshal(0x0E, pk.Byte(diff_type), pk.Boolean(true))); err != nil {
+			log.Print(err)
+		}
 		send_public_chat(string("Сложность изменена на: "+difficulties[diff_type]), 1, "yellow")
 	}
 }
