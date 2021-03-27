@@ -64,17 +64,6 @@ func NameToUUID(name string) uuid.UUID {
 //Store all connections
 var players_conns []net.Conn
 
-// cringe department
-func remove_conn(r net.Conn) []string {
-	var temp []string
-	for i, v := range players_conns {
-		if v == r {
-			players_conns[i] = players_conns[len(players_conns)-1]
-			players_conns = players_conns[:len(players_conns)-1]
-		}
-	}
-	return temp // i dont care what this function will return, im not gonna use it anywats
-}
 func acceptConn(conn net.Conn) {
 	defer conn.Close()
 	// handshake
@@ -102,6 +91,53 @@ func send_public_chat(message string, announce_type byte, color string) {
 		}
 	}
 }
+
+type player_tab_config struct {
+	UUID     pk.UUID
+	Name     pk.String
+	nop      pk.VarInt
+	gamemode pk.VarInt
+	ping     pk.VarInt
+	hdn      pk.Boolean
+}
+
+// cringe department
+func clean_player(r net.Conn, player player_tab_config) {
+	for i, v := range players_conns {
+		if v == r {
+			players_conns[i] = players_conns[len(players_conns)-1]
+			players_conns = players_conns[:len(players_conns)-1]
+		}
+	}
+	for i, v := range players_online {
+		if v == player {
+			tab_remove_user(players_online[i].UUID)
+			players_online[i] = players_online[len(players_online)-1]
+			players_online = players_online[:len(players_online)-1]
+		}
+	}
+}
+
+var players_online []player_tab_config
+
+func tab_remove_user(UUID pk.UUID) {
+	for i := 0; i < len(players_conns); i++ {
+		_ = players_conns[i].WritePacket(pk.Marshal(0x34,
+			pk.VarInt(4), // action -> remove player
+			pk.VarInt(1),
+			UUID))
+	}
+}
+
+func tab_update_users(conn net.Conn) {
+	for i := 0; i < len(players_online); i++ {
+		_ = conn.WritePacket(pk.Marshal(0x34,
+			pk.VarInt(0), //action,
+			pk.VarInt(1), //Number Of Players,
+			players_online[i].UUID, players_online[i].Name, players_online[i].nop, players_online[i].gamemode, players_online[i].ping, players_online[i].hdn))
+	}
+}
+
 func handlePlaying(conn net.Conn, protocol int32) {
 	c := cron.New()
 	_, _ = c.AddFunc("@every 25s", func() {
@@ -109,7 +145,6 @@ func handlePlaying(conn net.Conn, protocol int32) {
 		if err := conn.WritePacket(pk.Marshal(0x21, pk.Long(rand_float))); err != nil {
 			log.Print("Error when sending KEEP ALIVE PACKET", err)
 		}
-		fmt.Println("KEEPALIVE PACKET SENT")
 	})
 	// login, get player info
 	info, err := acceptLogin(conn)
@@ -138,36 +173,35 @@ func handlePlaying(conn net.Conn, protocol int32) {
 		log.Print("Login failed on sending PlayerPositionAndLookClientbound")
 		return
 	}
-
 	//https://wiki.vg/index.php?title=Protocol&oldid=16067#Player_Info
+	player_to_tab := player_tab_config{pk.UUID(info.UUID), pk.String(info.Name), pk.VarInt(0), pk.VarInt(1), pk.VarInt(100), pk.Boolean(false)}
+
+	//Sending TAB MENU with all users to the current player
+	tab_update_users(conn)
+	//Adding current player to the list of players
+	players_online = append(players_online, player_to_tab)
+
+	//Adding current player to the others TAB Menu
 	for i := 0; i < len(players_conns); i++ {
 		_ = players_conns[i].WritePacket(pk.Marshal(0x34,
 			pk.VarInt(0), //action,
-			pk.VarInt(2), //Number Of Players,
-			pk.UUID(info.UUID),
-			pk.String(info.Name),
-			pk.VarInt(0),    //Number Of Properties
-			pk.VarInt(0),    //gamemode
-			pk.VarInt(1000), //Ping,
-			pk.Boolean(false),
-			pk.UUID(NameToUUID("COCOJAMBO")),
-			pk.String("COCOJAMBO"),
-			pk.VarInt(0),  //Number Of Properties
-			pk.VarInt(0),  //gamemode
-			pk.VarInt(10), //Ping,
-			pk.Boolean(false)))
+			pk.VarInt(1), //Number Of Players,
+			pk.UUID(info.UUID), pk.String(info.Name), pk.VarInt(0), pk.VarInt(1), pk.VarInt(100), pk.Boolean(false)))
 	}
-
 	// Just for block this goroutine. Keep the connection
 	chat.SetLanguage(ru_ru.Map) //not sure if this needed
 	c.Start()
-	send_public_chat(info.Name+" has joined the server", 1, "yellow")
+	player_joined_message := info.Name + " has joined the server"
+	log.Print(player_joined_message)
+	send_public_chat(player_joined_message, 1, "yellow")
 	for {
 		if p, err := conn.ReadPacket(); err != nil {
-			send_public_chat(info.Name+" has left the server", 1, "yellow")
+			player_left_message := info.Name + " has left the server"
+			send_public_chat(player_left_message, 1, "yellow")
+			log.Print(player_left_message)
 			log.Printf("ReadPacket error: %v", err)
 			c.Stop()
-			remove_conn(conn)
+			clean_player(conn, player_to_tab)
 			break
 		} else {
 			switch p.ID {
@@ -186,8 +220,9 @@ func handlePlaying(conn net.Conn, protocol int32) {
 				} else if chat_message == "/test" {
 					fmt.Println(players_conns)
 				}
+			case 0x0F: //KEEP ALIVE ANSWER, NOTHING TO DO HERE
 			default:
-				fmt.Println(p.ID, string(p.Data))
+				fmt.Println(p)
 			}
 		}
 	}
