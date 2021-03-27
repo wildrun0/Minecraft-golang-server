@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"log"
 	"math/rand"
-	// "os"
 
 	"github.com/Tnze/go-mc/net"
 
@@ -59,7 +58,9 @@ func NameToUUID(name string) uuid.UUID {
 	id[8] = (id[8] & 0x3f) | 0x80 // RFC 4122 variant
 	return id
 }
+//Store all connections
 var players_conns []net.Conn
+
 func acceptConn(conn net.Conn) {
 	defer conn.Close()
 	// handshake
@@ -118,7 +119,7 @@ func handlePlaying(conn net.Conn, protocol int32) {
 		return
 	}
 	// Just for block this goroutine. Keep the connection
-	chat.SetLanguage(ru_ru.Map)
+	chat.SetLanguage(ru_ru.Map) //not sure if this needed
 	for {
 		if p, err := conn.ReadPacket(); err != nil {
 			log.Printf("ReadPacket error: %v", err)
