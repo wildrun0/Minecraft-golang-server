@@ -140,8 +140,22 @@ func handlePlaying(conn net.Conn, protocol int32) {
 	}
 
 	//https://wiki.vg/index.php?title=Protocol&oldid=16067#Player_Info
-	if err := conn.WritePacket(pk.Marshal(0x34, pk.VarInt(0), pk.VarInt(1), pk.UUID(info.UUID), pk.String(info.Name), pk.VarInt(0), pk.VarInt(1), pk.VarInt(1000), pk.Boolean(false))); err != nil {
-		log.Print(err)
+	for i := 0; i < len(players_conns); i++ {
+		_ = players_conns[i].WritePacket(pk.Marshal(0x34,
+			pk.VarInt(0), //action,
+			pk.VarInt(2), //Number Of Players,
+			pk.UUID(info.UUID),
+			pk.String(info.Name),
+			pk.VarInt(0),    //Number Of Properties
+			pk.VarInt(0),    //gamemode
+			pk.VarInt(1000), //Ping,
+			pk.Boolean(false),
+			pk.UUID(NameToUUID("COCOJAMBO")),
+			pk.String("COCOJAMBO"),
+			pk.VarInt(0),  //Number Of Properties
+			pk.VarInt(0),  //gamemode
+			pk.VarInt(10), //Ping,
+			pk.Boolean(false)))
 	}
 
 	// Just for block this goroutine. Keep the connection
@@ -173,7 +187,7 @@ func handlePlaying(conn net.Conn, protocol int32) {
 					fmt.Println(players_conns)
 				}
 			default:
-				fmt.Println(p)
+				fmt.Println(p.ID, string(p.Data))
 			}
 		}
 	}
