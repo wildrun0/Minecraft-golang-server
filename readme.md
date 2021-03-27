@@ -9,5 +9,11 @@ It's not ready yet, so checkout this repo for the latest updates!
 3) ????
 4) PROFIT!!!!
 
-### Why did we choose a golang?
+## Why did we choose a golang?
 So, the thought is simple - golang is fast.
+
+## THINGS TO DO
+- [x] Chat messaging
+- [ ] Chat commands (/ban, /kick and etc.)
+- [ ] Player movement
+- [ ] Worlds generation (probably the most hardest)
