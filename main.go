@@ -102,13 +102,11 @@ func send_public_chat(message string, announce_type byte, color string) {
 		}
 	}
 }
-
-var difficulties = [4]string{"Мирная", "Легкая", "Нормальная", "Сложная"}
-
 func handlePlaying(conn net.Conn, protocol int32) {
 	c := cron.New()
 	_, _ = c.AddFunc("@every 25s", func() {
-		if err := conn.WritePacket(pk.Marshal(0x21, pk.Long(rand.Uint64()))); err != nil {
+		rand_float := rand.Uint64()
+		if err := conn.WritePacket(pk.Marshal(0x21, pk.Long(rand_float))); err != nil {
 			log.Print("Error when sending KEEP ALIVE PACKET", err)
 		}
 		fmt.Println("KEEPALIVE PACKET SENT")
@@ -119,7 +117,6 @@ func handlePlaying(conn net.Conn, protocol int32) {
 		log.Print("Login failed")
 		return
 	}
-
 	// Write LoginSuccess packet
 
 	if err = loginSuccess(conn, info.Name, info.UUID); err != nil {
@@ -133,7 +130,7 @@ func handlePlaying(conn net.Conn, protocol int32) {
 	}
 	if err := conn.WritePacket(pk.Marshal(PlayerPositionAndLookClientbound,
 		// https://wiki.vg/index.php?title=Protocol&oldid=16067#Player_Position_And_Look_.28clientbound.29
-		pk.Double(10), pk.Double(0), pk.Double(10), // XYZ
+		pk.Double(0), pk.Double(0), pk.Double(0), // XYZ
 		pk.Float(0), pk.Float(0), // Yaw Pitch
 		pk.Byte(0),   // flag
 		pk.VarInt(0), // TP ID
@@ -141,6 +138,12 @@ func handlePlaying(conn net.Conn, protocol int32) {
 		log.Print("Login failed on sending PlayerPositionAndLookClientbound")
 		return
 	}
+
+	//https://wiki.vg/index.php?title=Protocol&oldid=16067#Player_Info
+	if err := conn.WritePacket(pk.Marshal(0x34, pk.VarInt(0), pk.VarInt(1), pk.UUID(info.UUID), pk.String(info.Name), pk.VarInt(0), pk.VarInt(1), pk.VarInt(1000), pk.Boolean(false))); err != nil {
+		log.Print(err)
+	}
+
 	// Just for block this goroutine. Keep the connection
 	chat.SetLanguage(ru_ru.Map) //not sure if this needed
 	c.Start()
@@ -169,9 +172,8 @@ func handlePlaying(conn net.Conn, protocol int32) {
 				} else if chat_message == "/test" {
 					fmt.Println(players_conns)
 				}
-			case 0xF:
 			default:
-				fmt.Println(p.ID)
+				fmt.Println(p)
 			}
 		}
 	}
