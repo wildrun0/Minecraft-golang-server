@@ -2,11 +2,13 @@ package main
 
 import (
 	"crypto/md5"
-	"strings"
-	"strconv"
 	"fmt"
 	"log"
 	"math/rand"
+	"strconv"
+	"strings"
+
+	"github.com/robfig/cron/v3"
 
 	"github.com/Tnze/go-mc/net"
 
@@ -58,6 +60,7 @@ func NameToUUID(name string) uuid.UUID {
 	id[8] = (id[8] & 0x3f) | 0x80 // RFC 4122 variant
 	return id
 }
+
 //Store all connections
 var players_conns []net.Conn
 
@@ -80,16 +83,25 @@ func acceptConn(conn net.Conn) {
 		handlePlaying(conn, protocol)
 	}
 }
-func send_public_chat(message string, announce_type byte){
-	for i:=0; i < len(players_conns); i++{
-		players_conns[i].WritePacket(pk.Marshal(0x0F, chat.Text(message), pk.Byte(announce_type)))
+func send_public_chat(message string, announce_type byte, color string) {
+	for i := 0; i < len(players_conns); i++ {
+		if err := players_conns[i].WritePacket(pk.Marshal(0x0F, chat.Message{Text: message, Color: color}, pk.Byte(announce_type))); err != nil {
+			log.Print(err)
+			send_error(players_conns[i], "Error just happend")
+		}
 	}
 }
-func send_private_chat(conn net.Conn, message string){
-	conn.WritePacket(pk.Marshal(0x0F, chat.Text(message), pk.Byte(0)))
-}
-var difficulties = [4]string{"Мирная","Нормальная","Сложная","Хардкор"}
+
+var difficulties = [4]string{"Мирная", "Легкая", "Нормальная", "Сложная"}
+
 func handlePlaying(conn net.Conn, protocol int32) {
+	c := cron.New()
+	c.AddFunc("@every 25s", func() {
+		if err := conn.WritePacket(pk.Marshal(0x21, pk.Long(rand.Uint64()))); err != nil {
+			log.Print("Error when sending KEEP ALIVE PACKET", err)
+		}
+		fmt.Println("KEEPALIVE PACKET SENT")
+	})
 	// login, get player info
 	info, err := acceptLogin(conn)
 	if err != nil {
@@ -120,23 +132,29 @@ func handlePlaying(conn net.Conn, protocol int32) {
 	}
 	// Just for block this goroutine. Keep the connection
 	chat.SetLanguage(ru_ru.Map) //not sure if this needed
+	c.Start()
+	send_public_chat(info.Name+" has joined the server", 1, "yellow")
 	for {
 		if p, err := conn.ReadPacket(); err != nil {
+			send_public_chat(info.Name+" has left the server", 1, "yellow")
 			log.Printf("ReadPacket error: %v", err)
+			c.Stop()
 			break
 		} else {
 			switch p.ID {
 			case 0x03: //CHAT MESSAGE
 				chat_message := string(p.Data[1:]) // removing junk byte (probably junk, idk maxim ya hz)
-				send_public_chat(info.Name+": "+chat_message, 0)
+				send_public_chat(info.Name+": "+chat_message, 0, "white")
 				if chat_message == "/disconnect" {
-					conn.WritePacket(pk.Marshal(0x1B, chat.Text("ПОСОСИ У У У")))
-				} else if strings.Contains(chat_message, "/difficulty"){
-					diff_type, _ := strconv.Atoi(strings.Split(chat_message, " ")[1])
-					conn.WritePacket(pk.Marshal(0x0E, pk.Byte(0), pk.Boolean(false)))
-					send_public_chat(string("Сложность была изменена на "+difficulties[diff_type]), 1)
-					// conn.WritePacket(pk.Marshal(0x0F, chat.Text("Сложность была изменена"), pk.Byte(1)))
-				} else if chat_message == "/test"{
+					disconnect(conn, "REASON")
+				} else if strings.Contains(chat_message, "/difficulty") {
+					if splitted_string := strings.Split(chat_message, " "); len(splitted_string) > 1 {
+						diff_type, _ := strconv.Atoi(strings.Split(chat_message, " ")[1])
+						difficulty(conn, diff_type)
+					} else {
+						send_error(conn, "Wrong command! Use /difficulty [1-3]")
+					}
+				} else if chat_message == "/test" {
 					fmt.Println(players_conns)
 				}
 			case 0xF:
@@ -144,7 +162,6 @@ func handlePlaying(conn net.Conn, protocol int32) {
 				fmt.Println(p.ID)
 			}
 		}
-		conn.WritePacket(pk.Marshal(0x21, pk.Long(rand.Uint64())))
 	}
 }
 

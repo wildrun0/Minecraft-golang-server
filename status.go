@@ -11,9 +11,8 @@ import (
 )
 
 func acceptListPing(conn net.Conn) {
-	var p pk.Packet
 	for i := 0; i < 2; i++ { // ping or list. Only accept twice
-		_, err := conn.ReadPacket()
+		p, err := conn.ReadPacket()
 		if err != nil {
 			return
 		}
@@ -50,7 +49,7 @@ func listResp() string {
 		FavIcon     string       `json:"favicon,omitempty"`
 	}
 
-	list.Version.Name = "Сосите"
+	list.Version.Name = "Wrong version (1.15.2 needed)"
 	list.Version.Protocol = ProtocolVersion
 	list.Players.Max = MaxPlayer
 	list.Players.Online = 1
