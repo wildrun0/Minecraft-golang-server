@@ -52,10 +52,10 @@ func listResp() string {
 
 	list.Version.Name = "Wrong version (1.15.2 needed)"
 	list.Version.Protocol = ProtocolVersion
-	list.Players.Max = MaxPlayer
+	list.Players.Max = server_settings.max_players
 	list.Players.Online = len(players_conns)
 	list.Players.Sample = []player{} // must init. can't be nil
-	list.Description = chat.Message{Text: "Powered by Richie Inc.", Color: "green"}
+	list.Description = chat.Message{Text: server_settings.motd, Color: "green", UnderLined: true}
 
 	data, err := json.Marshal(list)
 	if err != nil {

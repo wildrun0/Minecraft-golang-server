@@ -1,0 +1,7 @@
+ip_addr=127.0.0.1
+port_addr=25565
+difficulty=easy
+server_lang=en
+motd=A Golang Minecraft Server
+view_distance=16
+max_players=20

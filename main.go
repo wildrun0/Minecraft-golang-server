@@ -3,8 +3,10 @@ package main
 import (
 	"crypto/md5"
 	"fmt"
+	"io/ioutil"
 	"log"
 	"math/rand"
+	"os"
 	"strconv"
 	"strings"
 
@@ -19,7 +21,6 @@ import (
 )
 
 const ProtocolVersion = 578
-const MaxPlayer = 100
 
 // Packet IDs
 const (
@@ -27,13 +28,57 @@ const (
 	JoinGame                         = 0x26
 )
 
-var (
-	ip_addr   = "127.0.0.1"
-	port_addr = "25565"
-)
+type server_settings_type struct {
+	ip_addr       string
+	port_addr     string
+	difficulty    string
+	server_lang   string
+	motd          string
+	view_distance int
+	max_players   int
+}
+
+var server_settings server_settings_type
+
+func server_settings_checker(filename string) {
+	file, err := os.Open(filename)
+	defer file.Close()
+	if err != nil {
+		if file, err := os.Create(filename); err != nil {
+			log.Print("UNABLE TO CREATE A CONFIGURATION FILE")
+		} else {
+			server_default_settings := "ip_addr=127.0.0.1\nport_addr=25565\ndifficulty=easy\nserver_lang=en\nmotd=A Golang Minecraft Server\nview_distance=16\nmax_players=20"
+			_, _ = file.WriteString(server_default_settings)
+		}
+		panic(string("File " + filename + " dont exist. Creating a new one!\n(Now you should open file and edit him as you like)"))
+	} else {
+		lines, _ := ioutil.ReadAll(file)
+		line_strings := strings.Split(string(lines), "\n")
+		for i := 0; i < len(line_strings); i++ {
+			line := line_strings[i]
+			switch strings.Split(string(line), "=")[0] {
+			case "ip_addr":
+				server_settings.ip_addr = strings.Split(string(line), "=")[1]
+			case "port_addr":
+				server_settings.port_addr = strings.Split(string(line), "=")[1]
+			case "difficulty":
+				server_settings.difficulty = strings.Split(string(line), "=")[1]
+			case "server_lang":
+				server_settings.server_lang = strings.Split(string(line), "=")[1]
+			case "motd":
+				server_settings.motd = strings.Split(string(line), "=")[1]
+			case "view_distance":
+				server_settings.view_distance, _ = strconv.Atoi(strings.Split(string(line), "=")[1])
+			case "max_players":
+				server_settings.max_players, _ = strconv.Atoi(strings.Split(string(line), "=")[1])
+			}
+		}
+	}
+}
 
 func main() {
-	l, err := net.ListenMC(ip_addr + ":" + port_addr)
+	server_settings_checker("server_settings.txt")
+	l, err := net.ListenMC(server_settings.ip_addr + ":" + server_settings.port_addr)
 	if err != nil {
 		log.Fatalf("Listen error: %v", err)
 	}
@@ -137,7 +182,13 @@ func tab_update_users(conn net.Conn) {
 			players_online[i].UUID, players_online[i].Name, players_online[i].nop, players_online[i].gamemode, players_online[i].ping, players_online[i].hdn))
 	}
 }
-
+func spawn_player(conn net.Conn, eid pk.VarInt, uuid pk.UUID, x, y, z pk.Double, yaw, pitch pk.Angle) {
+	_ = conn.WritePacket(pk.Marshal(0x05,
+		eid,
+		uuid,
+		x, y, z, // XYZ
+		yaw, pitch))
+}
 func handlePlaying(conn net.Conn, protocol int32) {
 	c := cron.New()
 	_, _ = c.AddFunc("@every 25s", func() {
@@ -159,7 +210,7 @@ func handlePlaying(conn net.Conn, protocol int32) {
 		return
 	}
 
-	if err := joinGame(conn); err != nil {
+	if err := joinGame(conn, info.Name); err != nil {
 		log.Print("Login failed on joinGame")
 		return
 	}
@@ -192,7 +243,7 @@ func handlePlaying(conn net.Conn, protocol int32) {
 	chat.SetLanguage(ru_ru.Map) //not sure if this needed
 	c.Start()
 	player_joined_message := info.Name + " has joined the server"
-	log.Print(player_joined_message)
+	log.Print(player_joined_message + " [EID:" + strconv.Itoa(info.Eid) + "]")
 	send_public_chat(player_joined_message, 1, "yellow")
 	var p pk.Packet
 	for {
@@ -222,6 +273,19 @@ func handlePlaying(conn net.Conn, protocol int32) {
 					fmt.Println(players_conns)
 				}
 			case 0x0F: //KEEP ALIVE ANSWER, NOTHING TO DO HERE
+			case 0x05: //CLIENT SETTINGS, IGNORING THIS
+			case 0x0B: //PLUGIN MESSAGE, IGNORING this
+			case 0x12: //Player Position And Look
+				var x, y, z pk.Double
+				var yaw, pitch pk.Angle
+				var flag pk.Byte
+				var on_ground pk.Boolean
+				_ = p.Scan(&x, &y, &z, &yaw, &pitch, &flag, &on_ground)
+				fmt.Println(x, y, z, yaw, pitch, on_ground)
+			case 0x2A: //Player arm animation
+				var arm_swing pk.VarInt
+				_ = p.Scan(&arm_swing)
+				conn.WritePacket(pk.Marshal(0x06, pk.VarInt(players_eid[info.Name]), pk.UnsignedByte(arm_swing)))
 			default:
 				fmt.Println(p)
 			}
@@ -233,7 +297,10 @@ type PlayerInfo struct {
 	Name    string
 	UUID    uuid.UUID
 	OPLevel int
+	Eid     int
 }
+
+var players_eid = make(map[string]int)
 
 // acceptLogin check player's account
 func acceptLogin(conn net.Conn) (info PlayerInfo, err error) {
@@ -257,7 +324,15 @@ func acceptLogin(conn net.Conn) (info PlayerInfo, err error) {
 		// offline-mode UUID
 		info.UUID = NameToUUID(info.Name)
 	}
-
+	if len(players_eid) == 0 {
+		info.Eid = 0
+		players_eid[info.Name] = 0
+	} else {
+		for i := 0; i < len(players_eid); i++ {
+			info.Eid = i
+			players_eid[info.Name] = i
+		}
+	}
 	return
 }
 
@@ -285,16 +360,16 @@ func loginSuccess(conn net.Conn, name string, uuid uuid.UUID) error {
 	))
 }
 
-func joinGame(conn net.Conn) error {
+func joinGame(conn net.Conn, Name string) error {
 	return conn.WritePacket(pk.Marshal(JoinGame,
-		pk.Int(0),                  // EntityID
-		pk.UnsignedByte(1),         // Gamemode
-		pk.Int(0),                  // Dimension
-		pk.Long(0),                 // HashedSeed
-		pk.UnsignedByte(MaxPlayer), // MaxPlayer
-		pk.String("default"),       // LevelType
-		pk.VarInt(15),              // View Distance
-		pk.Boolean(false),          // Reduced Debug Info
-		pk.Boolean(true),           // Enable respawn screen
+		pk.Int(players_eid[Name]), // EntityID
+		pk.UnsignedByte(0),        // Gamemode
+		pk.Int(0),                 // Dimension
+		pk.Long(0),                // HashedSeed
+		pk.UnsignedByte(server_settings.max_players), // MaxPlayer
+		pk.String("default"),                         // LevelType
+		pk.VarInt(server_settings.view_distance),     // View Distance
+		pk.Boolean(false),                            // Reduced Debug Info
+		pk.Boolean(true),                             // Enable respawn screen
 	))
 }
