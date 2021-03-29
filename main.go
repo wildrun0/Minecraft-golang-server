@@ -194,8 +194,9 @@ func handlePlaying(conn net.Conn, protocol int32) {
 	player_joined_message := info.Name + " has joined the server"
 	log.Print(player_joined_message)
 	send_public_chat(player_joined_message, 1, "yellow")
+	var p pk.Packet
 	for {
-		if p, err := conn.ReadPacket(); err != nil {
+		if err := conn.ReadPacket(&p); err != nil {
 			player_left_message := info.Name + " has left the server"
 			send_public_chat(player_left_message, 1, "yellow")
 			log.Print(player_left_message)
@@ -238,7 +239,7 @@ type PlayerInfo struct {
 func acceptLogin(conn net.Conn) (info PlayerInfo, err error) {
 	//login start
 	var p pk.Packet
-	p, err = conn.ReadPacket()
+	err = conn.ReadPacket(&p)
 	if err != nil {
 		return
 	}
@@ -269,7 +270,7 @@ func handshake(conn net.Conn) (protocol, intention int32, err error) {
 		ServerPort          pk.UnsignedShort // ignored
 	)
 	// receive handshake packet
-	if p, err = conn.ReadPacket(); err != nil {
+	if err = conn.ReadPacket(&p); err != nil {
 		return
 	}
 	err = p.Scan(&Protocol, &ServerAddress, &ServerPort, &Intention)
