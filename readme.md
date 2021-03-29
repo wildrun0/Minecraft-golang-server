@@ -5,9 +5,10 @@ It's not ready yet, so checkout this repo for the latest updates!
 
 ## Getting started
 1) ```git clone github.com/wildrun0/Minecraft-golang-server```
-2) ```go run . ```
-3) ????
-4) PROFIT!!!!
+2) ```go get -u github.com/Tnze/go-mc@master```
+3) ```go run . ```
+4) ????
+5) PROFIT!!!!
 
 ## Why did we choose a golang?
 So, the thought is simple - golang is fast.
