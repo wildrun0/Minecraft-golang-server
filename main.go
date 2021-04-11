@@ -1,7 +1,7 @@
 package main
 
 import (
-	"crypto/md5"
+	"encoding/json"
 	"fmt"
 	"io/ioutil"
 	"log"
@@ -10,14 +10,12 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/robfig/cron/v3"
-
-	"github.com/Tnze/go-mc/net"
-
 	"github.com/Tnze/go-mc/chat"
-	ru_ru "github.com/Tnze/go-mc/data/lang/ru-ru"
+	"github.com/Tnze/go-mc/net"
 	pk "github.com/Tnze/go-mc/net/packet"
+	"github.com/Tnze/go-mc/offline"
 	"github.com/google/uuid"
+	"github.com/robfig/cron/v3"
 )
 
 const ProtocolVersion = 578
@@ -76,11 +74,31 @@ func server_settings_checker(filename string) {
 	}
 }
 
+var serverMessage map[string]string
+
 func main() {
 	server_settings_checker("server_settings.txt")
-	l, err := net.ListenMC(server_settings.ip_addr + ":" + server_settings.port_addr)
+	log.Print(server_settings.server_lang)
+	server_ip := string(server_settings.ip_addr + ":" + server_settings.port_addr)
+	lang_file_json, err := os.Open("server_langs.json")
+	defer lang_file_json.Close()
+	lang_file, _ := ioutil.ReadAll(lang_file_json)
+	if err != nil {
+		log.Fatalf("server_langs.json unavailable")
+	}
+	var lang_map map[string]json.RawMessage
+	if err := json.Unmarshal(lang_file, &lang_map); err != nil {
+		log.Fatal(err)
+	}
+	if err := json.Unmarshal(lang_map[server_settings.server_lang], &serverMessage); err != nil {
+		log.Fatal(err)
+	}
+	lang_map = nil
+	l, err := net.ListenMC(server_ip)
 	if err != nil {
 		log.Fatalf("Listen error: %v", err)
+	} else {
+		log.Print("Server addr: " + server_ip)
 	}
 
 	for {
@@ -90,20 +108,6 @@ func main() {
 		}
 		go acceptConn(conn)
 	}
-}
-
-// NameToUUID return the UUID from player name in offline mode
-func NameToUUID(name string) uuid.UUID {
-	var version = 3
-	h := md5.New()
-	h.Reset()
-	h.Write([]byte("OfflinePlayer:" + name))
-	s := h.Sum(nil)
-	var id uuid.UUID
-	copy(id[:], s)
-	id[6] = (id[6] & 0x0f) | uint8((version&0xf)<<4)
-	id[8] = (id[8] & 0x3f) | 0x80 // RFC 4122 variant
-	return id
 }
 
 //Store all connections
@@ -132,7 +136,7 @@ func send_public_chat(message string, announce_type byte, color string) {
 	for i := 0; i < len(players_conns); i++ {
 		if err := players_conns[i].WritePacket(pk.Marshal(0x0F, chat.Message{Text: message, Color: color}, pk.Byte(announce_type))); err != nil {
 			log.Print(err)
-			send_error(players_conns[i], "Error just happend")
+			send_error(players_conns[i], serverMessage["unknown_error"])
 		}
 	}
 }
@@ -240,15 +244,16 @@ func handlePlaying(conn net.Conn, protocol int32) {
 			pk.UUID(info.UUID), pk.String(info.Name), pk.VarInt(0), pk.VarInt(1), pk.VarInt(100), pk.Boolean(false)))
 	}
 	// Just for block this goroutine. Keep the connection
-	chat.SetLanguage(ru_ru.Map) //not sure if this needed
 	c.Start()
-	player_joined_message := info.Name + " has joined the server"
+	player_joined_message := info.Name + serverMessage["has_joined"]
 	log.Print(player_joined_message + " [EID:" + strconv.Itoa(info.Eid) + "]")
 	send_public_chat(player_joined_message, 1, "yellow")
+	ExampleColumn_send(conn, "world/region/r.0.0.mca")
+	// spawn_player(conn, pk.VarInt(info.Eid), pk.UUID(info.UUID), pk.Double(0), pk.Double(0), pk.Double(5), pk.Angle(0), pk.Angle(0))
 	var p pk.Packet
 	for {
 		if err := conn.ReadPacket(&p); err != nil {
-			player_left_message := info.Name + " has left the server"
+			player_left_message := info.Name + serverMessage["has_left"]
 			send_public_chat(player_left_message, 1, "yellow")
 			log.Print(player_left_message)
 			log.Printf("ReadPacket error: %v", err)
@@ -258,30 +263,37 @@ func handlePlaying(conn net.Conn, protocol int32) {
 		} else {
 			switch p.ID {
 			case 0x03: //CHAT MESSAGE
-				chat_message := string(p.Data[1:]) // removing junk byte (probably junk, idk maxim ya hz)
-				send_public_chat(info.Name+": "+chat_message, 0, "white")
-				if chat_message == "/disconnect" {
-					disconnect(conn, "REASON")
-				} else if strings.Contains(chat_message, "/difficulty") {
-					if splitted_string := strings.Split(chat_message, " "); len(splitted_string) > 1 {
-						diff_type, _ := strconv.Atoi(strings.Split(chat_message, " ")[1])
-						difficulty(conn, diff_type)
-					} else {
-						send_error(conn, "Wrong command! Use /difficulty [1-3]")
+				var chat_message string
+				_ = p.Scan((*pk.String)(&chat_message))
+				if len(chat_message) > 128 {
+					send_error(conn, serverMessage["message_istoolong"])
+				} else {
+					send_public_chat(info.Name+": "+chat_message, 0, "white")
+					if chat_message == "/disconnect" {
+						disconnect(conn, "REASON")
+					} else if strings.Contains(chat_message, "/difficulty") {
+						if splitted_string := strings.Split(chat_message, " "); len(splitted_string) > 1 {
+							diff_type, _ := strconv.Atoi(strings.Split(chat_message, " ")[1])
+							difficulty(conn, diff_type)
+						} else {
+							send_error(conn, serverMessage["wrong_command"]+"/difficulty [1-3]")
+						}
+					} else if chat_message == "/test" {
+						fmt.Println(players_conns)
 					}
-				} else if chat_message == "/test" {
-					fmt.Println(players_conns)
 				}
 			case 0x0F: //KEEP ALIVE ANSWER, NOTHING TO DO HERE
 			case 0x05: //CLIENT SETTINGS, IGNORING THIS
 			case 0x0B: //PLUGIN MESSAGE, IGNORING this
 			case 0x12: //Player Position And Look
-				var x, y, z pk.Double
-				var yaw, pitch pk.Angle
-				var flag pk.Byte
-				var on_ground pk.Boolean
+				var (
+					x, y, z    pk.Double
+					yaw, pitch pk.Angle
+					flag       pk.Byte
+					on_ground  pk.Boolean
+				)
 				_ = p.Scan(&x, &y, &z, &yaw, &pitch, &flag, &on_ground)
-				fmt.Println(x, y, z, yaw, pitch, on_ground)
+				fmt.Println(x, y, z, yaw, pitch, flag, on_ground)
 			case 0x2A: //Player arm animation
 				var arm_swing pk.VarInt
 				_ = p.Scan(&arm_swing)
@@ -322,7 +334,7 @@ func acceptLogin(conn net.Conn) (info PlayerInfo, err error) {
 		log.Panic("Not Implement")
 	} else {
 		// offline-mode UUID
-		info.UUID = NameToUUID(info.Name)
+		info.UUID = offline.NameToUUID(info.Name)
 	}
 	if len(players_eid) == 0 {
 		info.Eid = 0

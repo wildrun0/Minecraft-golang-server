@@ -23,13 +23,16 @@ func disconnect(conn net.Conn, reason string) {
 	}
 }
 func difficulty(conn net.Conn, diff_type int) {
-	var difficulties = [4]string{"Мирная", "Легкая", "Нормальная", "Сложная"}
+	difficulties := [4]string{"Peaceful", "Easy", "Normal", "Hard"}
+	if server_settings.server_lang == "ru" {
+		difficulties = [4]string{"Мирная", "Легкая", "Нормальная", "Сложная"}
+	}
 	if diff_type < 0 || diff_type > 3 {
-		send_error(conn, "Неправильная команда! /difficulty [1-3]")
+		send_error(conn, serverMessage["wrong_command"]+"/difficulty [1-3]")
 	} else {
 		if err := conn.WritePacket(pk.Marshal(0x0E, pk.Byte(diff_type), pk.Boolean(true))); err != nil {
 			log.Print(err)
 		}
-		send_public_chat(string("Сложность изменена на: "+difficulties[diff_type]), 1, "yellow")
+		send_public_chat(string(serverMessage["diff_changed"]+difficulties[diff_type]), 1, "yellow")
 	}
 }

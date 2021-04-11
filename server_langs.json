@@ -1,0 +1,22 @@
+{
+  "ru":{
+    "unknown_error":"Неизвестная ошибка",
+    "error":"Ошибка",
+    "has_joined":" подключился к серверу",
+    "has_left":" отключился от сервера",
+    "wrong_command":"Неправильная команда! Используйте: ",
+    "message_istoolong":"Слишком длинное сообщение!",
+    "diff_changed":"Сложность изменена на ",
+    "unknown_command":"Неизвестная команда"
+  },
+  "en":{
+    "unknown_error":"Unknown error",
+    "error":"Error",
+    "has_joined":" has joined the server",
+    "has_left":" has left the server",
+    "wrong_command":"Wrong command! Use: ",
+    "message_istoolong":"Message is too long!",
+    "diff_changed":"Difficulty is now set to ",
+    "unknown_command":"Unknown command"
+  }
+}
