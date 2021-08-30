@@ -54,21 +54,22 @@ func server_settings_checker(filename string) {
 		line_strings := strings.Split(string(lines), "\n")
 		for i := 0; i < len(line_strings); i++ {
 			line := line_strings[i]
+			value := strings.Split(string(line), "=")[1]
 			switch strings.Split(string(line), "=")[0] {
 			case "ip_addr":
-				server_settings.ip_addr = strings.Split(string(line), "=")[1]
+				server_settings.ip_addr = value
 			case "port_addr":
-				server_settings.port_addr = strings.Split(string(line), "=")[1]
+				server_settings.port_addr = value
 			case "difficulty":
-				server_settings.difficulty = strings.Split(string(line), "=")[1]
+				server_settings.difficulty = value
 			case "server_lang":
-				server_settings.server_lang = strings.Split(string(line), "=")[1]
+				server_settings.server_lang = value
 			case "motd":
-				server_settings.motd = strings.Split(string(line), "=")[1]
+				server_settings.motd = value
 			case "view_distance":
-				server_settings.view_distance, _ = strconv.Atoi(strings.Split(string(line), "=")[1])
+				server_settings.view_distance, _ = strconv.Atoi(value)
 			case "max_players":
-				server_settings.max_players, _ = strconv.Atoi(strings.Split(string(line), "=")[1])
+				server_settings.max_players, _ = strconv.Atoi(value)
 			}
 		}
 	}
@@ -186,6 +187,8 @@ func tab_update_users(conn net.Conn) {
 			players_online[i].UUID, players_online[i].Name, players_online[i].nop, players_online[i].gamemode, players_online[i].ping, players_online[i].hdn))
 	}
 }
+
+// never used
 func spawn_player(conn net.Conn, eid pk.VarInt, uuid pk.UUID, x, y, z pk.Double, yaw, pitch pk.Angle) {
 	_ = conn.WritePacket(pk.Marshal(0x05,
 		eid,
